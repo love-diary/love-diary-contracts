@@ -25,7 +25,7 @@ Standard ERC-20 token with fixed supply. Used for:
 - Daily login rewards (+5 LOVE)
 
 ### LoveTokenFaucet.sol
-Testnet faucet allowing each address to claim 1000 LOVE tokens once for demo purposes.
+Testnet faucet allowing each address to claim 10000 LOVE tokens once per hour.
 
 ### CharacterNFT.sol
 ERC-721 NFT contract for character ownership with:
@@ -45,6 +45,21 @@ Gift purchase system that transfers LOVE tokens directly to character agent wall
 - Multiple gift tiers (10-100 LOVE)
 - Tokens go to agent wallet, not burned
 - Enables agent economic autonomy
+
+## Deployed Contracts
+
+### Base Sepolia Testnet
+
+- **LoveToken**: `0xf614a36b715a1f00bc9450d113d4eefeb0dd6396`
+- **LoveTokenFaucet**: `0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84`
+
+View on Basescan:
+- [LoveToken](https://sepolia.basescan.org/address/0xf614a36b715a1f00bc9450d113d4eefeb0dd6396)
+- [LoveTokenFaucet](https://sepolia.basescan.org/address/0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84)
+
+### Base Mainnet (Production)
+
+Not yet deployed.
 
 ## Technology Stack
 
@@ -67,7 +82,11 @@ npx hardhat compile
 npx hardhat test
 
 # Deploy to Base Sepolia testnet
-npx hardhat run scripts/deploy.ts --network base-sepolia
+npx hardhat run scripts/deploy.ts --network baseSepolia
+
+# Verify deployed contracts on Basescan
+npx hardhat verify --network baseSepolia 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
+npx hardhat verify --network baseSepolia 0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
 ```
 
 ## License
