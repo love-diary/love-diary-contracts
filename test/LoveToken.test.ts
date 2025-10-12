@@ -132,19 +132,33 @@ describe("LoveToken", function () {
       expect(await loveToken.totalSupply()).to.equal(initialSupply - burnAmount);
     });
 
-    it("Should fail if non-owner tries to burn", async function () {
-      const burnAmount = ethers.parseEther("1000");
+    it("Should allow anyone to burn their own tokens", async function () {
+      const burnAmount = ethers.parseEther("100");
+      const initialSupply = await loveToken.totalSupply();
 
-      await expect(
-        loveToken.connect(addr1).burn(burnAmount)
-      ).to.be.revertedWithCustomError(loveToken, "OwnableUnauthorizedAccount");
+      // Transfer tokens to addr1
+      await loveToken.transfer(addr1.address, burnAmount);
+
+      // addr1 should be able to burn their own tokens
+      await loveToken.connect(addr1).burn(burnAmount);
+
+      expect(await loveToken.balanceOf(addr1.address)).to.equal(0);
+      expect(await loveToken.totalSupply()).to.equal(initialSupply - burnAmount);
     });
 
-    it("Should fail if owner tries to burn more than they have", async function () {
+    it("Should fail if trying to burn more tokens than balance", async function () {
       const ownerBalance = await loveToken.balanceOf(owner.address);
       const burnAmount = ownerBalance + ethers.parseEther("1");
 
       await expect(loveToken.burn(burnAmount)).to.be.reverted;
+    });
+
+    it("Should fail if trying to burn with zero balance", async function () {
+      const burnAmount = ethers.parseEther("1");
+
+      await expect(
+        loveToken.connect(addr1).burn(burnAmount)
+      ).to.be.reverted;
     });
   });
 

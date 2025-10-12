@@ -29,8 +29,9 @@ Testnet faucet allowing each address to claim 10000 LOVE tokens once per hour.
 
 ### CharacterNFT.sol
 ERC-721 NFT contract for character ownership with:
-- Randomized character attributes (name, age, occupation, personality)
-- Agent wallet address generation on mint
+- Player-selected attributes (name, gender, sexual orientation, language)
+- Randomized traits (birth year, occupation ID, personality ID)
+- Numeric trait IDs (0-9) mapped to strings off-chain for localization
 - 100 LOVE minting fee (burned)
 - 50 LOVE transfer fee (to treasury)
 
@@ -52,10 +53,12 @@ Gift purchase system that transfers LOVE tokens directly to character agent wall
 
 - **LoveToken**: `0xf614a36b715a1f00bc9450d113d4eefeb0dd6396`
 - **LoveTokenFaucet**: `0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84`
+- **CharacterNFT**: `0x55197e1d9513B4253599547804c70CfdcE68597f`
 
 View on Basescan:
 - [LoveToken](https://sepolia.basescan.org/address/0xf614a36b715a1f00bc9450d113d4eefeb0dd6396)
 - [LoveTokenFaucet](https://sepolia.basescan.org/address/0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84)
+- [CharacterNFT](https://sepolia.basescan.org/address/0x55197e1d9513B4253599547804c70CfdcE68597f)
 
 ### Base Mainnet (Production)
 
@@ -81,12 +84,16 @@ npx hardhat compile
 # Run tests
 npx hardhat test
 
-# Deploy to Base Sepolia testnet
+# Deploy LoveToken and Faucet to Base Sepolia testnet
 npx hardhat run scripts/deploy.ts --network baseSepolia
+
+# Deploy CharacterNFT to Base Sepolia testnet
+npx hardhat run scripts/deployCharacterNFT.ts --network baseSepolia
 
 # Verify deployed contracts on Basescan
 npx hardhat verify --network baseSepolia 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
 npx hardhat verify --network baseSepolia 0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
+npx hardhat verify --network baseSepolia 0x55197e1d9513B4253599547804c70CfdcE68597f 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
 ```
 
 ## License
