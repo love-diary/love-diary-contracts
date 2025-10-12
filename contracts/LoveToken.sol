@@ -40,10 +40,24 @@ contract LoveToken is ERC20, Ownable {
 
     /**
      * @dev Allows anyone to burn tokens from their own balance
-     * Used by CharacterNFT to burn minting fees
+     * Used by CharacterNFT to burn minting fees (50% of mint cost)
+     * Players can also burn their own tokens to reduce supply
      * @param amount Amount of tokens to burn
      */
     function burn(uint256 amount) external {
         _burn(msg.sender, amount);
+    }
+
+    /**
+     * @dev Allows burning tokens from another account with allowance
+     * Used by CharacterNFT to burn tokens it received
+     * @param account Address to burn tokens from
+     * @param amount Amount of tokens to burn
+     */
+    function burnFrom(address account, uint256 amount) external {
+        uint256 currentAllowance = allowance(account, msg.sender);
+        require(currentAllowance >= amount, "ERC20: insufficient allowance");
+        _approve(account, msg.sender, currentAllowance - amount);
+        _burn(account, amount);
     }
 }

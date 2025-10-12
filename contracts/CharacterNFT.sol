@@ -41,6 +41,8 @@ contract CharacterNFT is ERC721, Ownable {
     }
 
     LoveToken public immutable loveToken;
+    address public treasury; // Treasury address for receiving minting fees
+
     uint256 public constant MINT_COST = 100 * 10**18; // 100 LOVE
     uint256 public constant TRANSFER_FEE = 50 * 10**18; // 50 LOVE
 
@@ -67,13 +69,19 @@ contract CharacterNFT is ERC721, Ownable {
         uint256 fee
     );
 
+    event TreasuryUpdated(
+        address indexed oldTreasury,
+        address indexed newTreasury
+    );
+
     constructor(address loveTokenAddress) ERC721("Love Diary Character", "LDC") Ownable(msg.sender) {
         loveToken = LoveToken(loveTokenAddress);
+        treasury = msg.sender; // Initialize treasury to deployer (can be changed later)
     }
 
     /**
      * @notice Mint a new character NFT with player-selected attributes and randomized traits
-     * @dev Requires 100 LOVE tokens which are burned
+     * @dev Requires 100 LOVE tokens: 50 LOVE burned (deflationary), 50 LOVE to treasury
      * @param name The character's name (player-provided)
      * @param gender The character's gender (Male, Female, NonBinary)
      * @param sexualOrientation The character's sexual orientation
@@ -86,12 +94,24 @@ contract CharacterNFT is ERC721, Ownable {
         SexualOrientation sexualOrientation,
         Language language
     ) external returns (uint256) {
-        // Burn 100 LOVE tokens from minter
+        // Transfer 100 LOVE tokens from minter to this contract
         require(
             loveToken.transferFrom(msg.sender, address(this), MINT_COST),
             "LOVE transfer failed"
         );
-        loveToken.burn(MINT_COST);
+
+        // Calculate split amounts
+        uint256 burnAmount = MINT_COST / 2;      // 50 LOVE (50%)
+        uint256 treasuryAmount = MINT_COST / 2;  // 50 LOVE (50%)
+
+        // Burn 50 LOVE (deflationary - reduces total supply)
+        loveToken.burn(burnAmount);
+
+        // Transfer 50 LOVE to treasury (for faucet, rewards, marketing)
+        require(
+            loveToken.transfer(treasury, treasuryAmount),
+            "Treasury transfer failed"
+        );
 
         // Generate character
         uint256 tokenId = _nextTokenId++;
@@ -120,6 +140,18 @@ contract CharacterNFT is ERC721, Ownable {
         emit CharacterMinted(tokenId, msg.sender, name, gender, sexualOrientation);
 
         return tokenId;
+    }
+
+    /**
+     * @notice Update the treasury address
+     * @dev Only owner can call this. Useful for switching to multi-sig later.
+     * @param newTreasury The new treasury address
+     */
+    function setTreasury(address newTreasury) external onlyOwner {
+        require(newTreasury != address(0), "Treasury cannot be zero address");
+        address oldTreasury = treasury;
+        treasury = newTreasury;
+        emit TreasuryUpdated(oldTreasury, newTreasury);
     }
 
     /**
