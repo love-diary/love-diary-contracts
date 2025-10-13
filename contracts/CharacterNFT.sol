@@ -38,6 +38,7 @@ contract CharacterNFT is ERC721, Ownable {
         uint8 personalityId;     // 0-9 for MVP (10 personalities)
         Language language;
         uint256 mintedAt;
+        bool isBonded;           // False when minted, true after bonding (irreversible)
     }
 
     LoveToken public immutable loveToken;
@@ -60,6 +61,11 @@ contract CharacterNFT is ERC721, Ownable {
         string name,
         Gender gender,
         SexualOrientation sexualOrientation
+    );
+
+    event CharacterBonded(
+        uint256 indexed tokenId,
+        address indexed owner
     );
 
     event CharacterTransferred(
@@ -134,12 +140,39 @@ contract CharacterNFT is ERC721, Ownable {
             occupationId: uint8(seed % OCCUPATION_COUNT),           // Random 0-9
             personalityId: uint8((seed >> 8) % PERSONALITY_COUNT),  // Random 0-9
             language: language,
-            mintedAt: block.timestamp
+            mintedAt: block.timestamp,
+            isBonded: false          // Character starts unbonded
         });
 
         emit CharacterMinted(tokenId, msg.sender, name, gender, sexualOrientation);
 
         return tokenId;
+    }
+
+    /**
+     * @notice Bond with a character to initialize it with the current owner
+     * @dev Can only be called once by the current owner. This action is irreversible.
+     *      Player information (name, gender) is stored off-chain in the agent's memory.
+     * @param tokenId The ID of the character NFT to bond with
+     */
+    function bond(uint256 tokenId) external {
+        require(ownerOf(tokenId) == msg.sender, "Not the owner");
+        require(!_characters[tokenId].isBonded, "Already bonded");
+
+        // Bond with the character (irreversible)
+        _characters[tokenId].isBonded = true;
+
+        emit CharacterBonded(tokenId, msg.sender);
+    }
+
+    /**
+     * @notice Check if a character is bonded
+     * @param tokenId The ID of the character NFT
+     * @return bool True if bonded, false if unbonded
+     */
+    function isBonded(uint256 tokenId) external view returns (bool) {
+        require(ownerOf(tokenId) != address(0), "Character does not exist");
+        return _characters[tokenId].isBonded;
     }
 
     /**

@@ -354,4 +354,116 @@ describe("CharacterNFT", function () {
       expect(isDifferent).to.be.true;
     });
   });
+
+  describe("Bonding", function () {
+    beforeEach(async function () {
+      await characterNFT.connect(addr1).mint("Emma", Gender.Female, SexualOrientation.Bisexual, Language.EN);
+    });
+
+    it("Should start unbonded after minting", async function () {
+      expect(await characterNFT.isBonded(0)).to.be.false;
+    });
+
+    it("Should allow owner to bond with character", async function () {
+      await characterNFT.connect(addr1).bond(0);
+      expect(await characterNFT.isBonded(0)).to.be.true;
+    });
+
+    it("Should emit CharacterBonded event", async function () {
+      await expect(characterNFT.connect(addr1).bond(0))
+        .to.emit(characterNFT, "CharacterBonded")
+        .withArgs(0, addr1.address);
+    });
+
+    it("Should fail if non-owner tries to bond", async function () {
+      await expect(
+        characterNFT.connect(addr2).bond(0)
+      ).to.be.revertedWith("Not the owner");
+    });
+
+    it("Should fail if already bonded", async function () {
+      await characterNFT.connect(addr1).bond(0);
+
+      await expect(
+        characterNFT.connect(addr1).bond(0)
+      ).to.be.revertedWith("Already bonded");
+    });
+
+    it("Should fail to check bond status for non-existent token", async function () {
+      await expect(
+        characterNFT.isBonded(999)
+      ).to.be.reverted;
+    });
+
+    it("Should preserve bonded status after transfer", async function () {
+      // Bond first
+      await characterNFT.connect(addr1).bond(0);
+      expect(await characterNFT.isBonded(0)).to.be.true;
+
+      // Transfer
+      await loveToken.transfer(addr1.address, TRANSFER_FEE);
+      await characterNFT.connect(addr1).transferFrom(addr1.address, addr2.address, 0);
+
+      // Bond status should persist
+      expect(await characterNFT.isBonded(0)).to.be.true;
+      expect(await characterNFT.ownerOf(0)).to.equal(addr2.address);
+    });
+
+    it("Should not allow new owner to bond already bonded character", async function () {
+      // Bond as addr1
+      await characterNFT.connect(addr1).bond(0);
+
+      // Transfer to addr2
+      await loveToken.transfer(addr1.address, TRANSFER_FEE);
+      await characterNFT.connect(addr1).transferFrom(addr1.address, addr2.address, 0);
+
+      // addr2 should not be able to bond
+      await expect(
+        characterNFT.connect(addr2).bond(0)
+      ).to.be.revertedWith("Already bonded");
+    });
+
+    it("Should allow new owner to bond unbonded character after transfer", async function () {
+      // Transfer without bonding
+      await loveToken.transfer(addr1.address, TRANSFER_FEE);
+      await characterNFT.connect(addr1).transferFrom(addr1.address, addr2.address, 0);
+
+      // New owner should be able to bond
+      await characterNFT.connect(addr2).bond(0);
+      expect(await characterNFT.isBonded(0)).to.be.true;
+    });
+
+    it("Should handle multiple characters with different bond states", async function () {
+      // Mint second character
+      await characterNFT.connect(addr1).mint("Alex", Gender.Male, SexualOrientation.Straight, Language.EN);
+
+      // Bond only the first one
+      await characterNFT.connect(addr1).bond(0);
+
+      expect(await characterNFT.isBonded(0)).to.be.true;
+      expect(await characterNFT.isBonded(1)).to.be.false;
+    });
+
+    it("Should preserve character data after bonding", async function () {
+      const charBefore = await characterNFT.getCharacter(0);
+
+      await characterNFT.connect(addr1).bond(0);
+
+      const charAfter = await characterNFT.getCharacter(0);
+
+      // All character data should remain the same
+      expect(charAfter.name).to.equal(charBefore.name);
+      expect(charAfter.birthYear).to.equal(charBefore.birthYear);
+      expect(charAfter.gender).to.equal(charBefore.gender);
+      expect(charAfter.sexualOrientation).to.equal(charBefore.sexualOrientation);
+      expect(charAfter.occupationId).to.equal(charBefore.occupationId);
+      expect(charAfter.personalityId).to.equal(charBefore.personalityId);
+      expect(charAfter.language).to.equal(charBefore.language);
+      expect(charAfter.mintedAt).to.equal(charBefore.mintedAt);
+
+      // Only isBonded should change
+      expect(charAfter.isBonded).to.be.true;
+      expect(charBefore.isBonded).to.be.false;
+    });
+  });
 });
