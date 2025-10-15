@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./LoveToken.sol";
 
 /**
  * @title CharacterNFT
- * @notice ERC-721 NFT representing AI-powered romance game characters
+ * @notice Upgradeable ERC-721 NFT representing AI-powered romance game characters
  * @dev Each character has unique attributes for AI agent personality generation
+ * @dev Uses UUPS upgradeable pattern for future feature additions
  */
-contract CharacterNFT is ERC721, Ownable {
+contract CharacterNFT is Initializable, ERC721Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
     enum Gender {
         Male,
         Female,
@@ -31,7 +34,7 @@ contract CharacterNFT is ERC721, Ownable {
 
     struct Character {
         string name;
-        uint16 birthYear;
+        uint32 birthTimestamp;   // Unix timestamp for astrology (exact birth date/time)
         Gender gender;
         SexualOrientation sexualOrientation;
         uint8 occupationId;      // 0-9 for MVP (10 occupations)
@@ -39,9 +42,10 @@ contract CharacterNFT is ERC721, Ownable {
         Language language;
         uint256 mintedAt;
         bool isBonded;           // False when minted, true after bonding (irreversible)
+        bytes32 secret;          // Hidden personality trait - thousands of possibilities, not revealed to players
     }
 
-    LoveToken public immutable loveToken;
+    LoveToken public loveToken;
     address public treasury; // Treasury address for receiving minting fees
 
     uint256 public constant MINT_COST = 100 * 10**18; // 100 LOVE
@@ -80,7 +84,20 @@ contract CharacterNFT is ERC721, Ownable {
         address indexed newTreasury
     );
 
-    constructor(address loveTokenAddress) ERC721("Love Diary Character", "LDC") Ownable(msg.sender) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initialize the contract (replaces constructor for upgradeable contracts)
+     * @param loveTokenAddress Address of the LOVE token contract
+     */
+    function initialize(address loveTokenAddress) public initializer {
+        __ERC721_init("Love Diary Character", "LDC");
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+
         loveToken = LoveToken(loveTokenAddress);
         treasury = msg.sender; // Initialize treasury to deployer (can be changed later)
     }
@@ -123,7 +140,7 @@ contract CharacterNFT is ERC721, Ownable {
         uint256 tokenId = _nextTokenId++;
         _safeMint(msg.sender, tokenId);
 
-        // Generate randomized attributes (occupation and personality only)
+        // Generate randomized attributes (occupation, personality, and secret)
         uint256 seed = uint256(keccak256(abi.encodePacked(
             block.timestamp,
             block.prevrandao,
@@ -131,17 +148,28 @@ contract CharacterNFT is ERC721, Ownable {
             tokenId
         )));
 
+        // Generate secret: a unique hidden trait (not revealed to players)
+        // Provides thousands of possibilities for AI personality depth
+        bytes32 characterSecret = keccak256(abi.encodePacked(
+            seed,
+            block.number,
+            msg.sender,
+            name,
+            "secret"
+        ));
+
         // Store character data directly without intermediate variables to avoid stack too deep
         _characters[tokenId] = Character({
             name: name,
-            birthYear: uint16(1995 + (seed % 13)), // Birth year 1995-2007 (age 18-30 in 2025)
+            birthTimestamp: _generateBirthTimestamp(seed), // Random birth date/time for astrology
             gender: gender,
             sexualOrientation: sexualOrientation,
-            occupationId: uint8(seed % OCCUPATION_COUNT),           // Random 0-9
-            personalityId: uint8((seed >> 8) % PERSONALITY_COUNT),  // Random 0-9
+            occupationId: _generateOccupation(seed),
+            personalityId: _generatePersonality(seed),
             language: language,
             mintedAt: block.timestamp,
-            isBonded: false          // Character starts unbonded
+            isBonded: false,         // Character starts unbonded
+            secret: characterSecret  // Hidden trait for AI agent personality depth
         });
 
         emit CharacterMinted(tokenId, msg.sender, name, gender, sexualOrientation);
@@ -241,6 +269,51 @@ contract CharacterNFT is ERC721, Ownable {
     }
 
     /**
+     * @notice Generate birth timestamp for astrology calculations
+     * @dev Generates random birth time so character is 21-25 years old at minting time
+     * @param seed Random seed for generation
+     * @return uint32 Unix timestamp of birth (for zodiac, moon sign, rising sign calculations)
+     */
+    function _generateBirthTimestamp(uint256 seed) internal view virtual returns (uint32) {
+        // Calculate age range in seconds
+        uint256 age21 = 21 * 365.25 days; // 21 years in seconds
+        uint256 age25 = 25 * 365.25 days; // 25 years in seconds
+        uint256 ageRange = age25 - age21; // 4 years range
+
+        // Birth timestamp = current time - random age (21-25 years)
+        uint256 birthTime = block.timestamp - age21 - (seed % ageRange);
+        return uint32(birthTime);
+    }
+
+    /**
+     * @notice Generate occupation ID for a character
+     * @dev Virtual function - can be overridden in upgrades to implement rarity tiers
+     * @param seed Random seed for generation
+     * @return uint8 Occupation ID (0 to OCCUPATION_COUNT-1)
+     */
+    function _generateOccupation(uint256 seed) internal view virtual returns (uint8) {
+        return uint8(seed % OCCUPATION_COUNT);
+    }
+
+    /**
+     * @notice Generate personality ID for a character
+     * @dev Virtual function - can be overridden in upgrades to implement rarity tiers
+     * @param seed Random seed for generation
+     * @return uint8 Personality ID (0 to PERSONALITY_COUNT-1)
+     */
+    function _generatePersonality(uint256 seed) internal view virtual returns (uint8) {
+        // Use different bits from seed to ensure independence from occupation
+        return uint8((seed >> 8) % PERSONALITY_COUNT);
+    }
+
+    /**
+     * @notice Authorize upgrade to new implementation
+     * @dev Only owner can authorize upgrades (UUPS pattern)
+     * @param newImplementation Address of new implementation contract
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    /**
      * @dev Helper function to convert uint to string
      */
     function _toString(uint256 value) internal pure returns (string memory) {
@@ -261,4 +334,14 @@ contract CharacterNFT is ERC721, Ownable {
         }
         return string(buffer);
     }
+
+    /**
+     * @dev Storage gap for future upgrades
+     * Reserves 50 storage slots for future state variables
+     * IMPORTANT: When adding new state variables in upgrades:
+     * 1. Add them AFTER existing variables (never reorder)
+     * 2. Reduce __gap array size accordingly
+     * 3. Document changes in STORAGE_LAYOUT.md
+     */
+    uint256[50] private __gap;
 }

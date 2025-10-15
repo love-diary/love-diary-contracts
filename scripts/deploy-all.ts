@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -65,31 +65,37 @@ async function main() {
   }
 
   // ===================================
-  // Step 3: Deploy CharacterNFT
+  // Step 3: Deploy CharacterNFT (UUPS Upgradeable Proxy)
   // ===================================
-  console.log("📝 Step 3: Deploying CharacterNFT...");
+  console.log("📝 Step 3: Deploying CharacterNFT (UUPS Proxy)...");
   const CharacterNFT = await ethers.getContractFactory("CharacterNFT");
-  const characterNFT = await CharacterNFT.deploy(loveTokenAddress);
 
-  const nftDeployTx = characterNFT.deploymentTransaction();
-  if (nftDeployTx) {
-    console.log("   Deployment tx hash:", nftDeployTx.hash);
-    console.log("   Waiting for confirmations...");
-    await nftDeployTx.wait(2); // Wait for 2 confirmations
-  }
+  console.log("   Deploying proxy...");
+  const characterNFT = await upgrades.deployProxy(
+    CharacterNFT,
+    [loveTokenAddress],
+    { kind: 'uups' }
+  );
 
   await characterNFT.waitForDeployment();
-  const characterNFTAddress = await characterNFT.getAddress();
-  console.log("✅ CharacterNFT deployed to:", characterNFTAddress);
+  const characterNFTProxyAddress = await characterNFT.getAddress();
+
+  // Get implementation address
+  const implementationAddress = await upgrades.erc1967.getImplementationAddress(characterNFTProxyAddress);
+
+  console.log("✅ CharacterNFT Proxy deployed to:", characterNFTProxyAddress);
+  console.log("   Implementation deployed to:    ", implementationAddress);
 
   try {
     const mintCost = await characterNFT.MINT_COST();
     const treasury = await characterNFT.treasury();
     console.log("   Mint cost:", ethers.formatEther(mintCost), "LOVE (50% burn, 50% treasury)");
-    console.log("   Treasury:", treasury, "(currently set to deployer)\n");
+    console.log("   Treasury:", treasury, "(currently set to deployer)");
+    console.log("   Pattern: UUPS (Universal Upgradeable Proxy Standard)\n");
   } catch (error) {
     console.log("   (Mint cost: 100 LOVE - 50% burn, 50% treasury)");
-    console.log("   (Treasury: set to deployer)\n");
+    console.log("   (Treasury: set to deployer)");
+    console.log("   (Pattern: UUPS)\n");
   }
 
   // ===================================
@@ -120,9 +126,10 @@ async function main() {
   console.log("========================================\n");
 
   console.log("📋 Contract Addresses:");
-  console.log("   LoveToken:        ", loveTokenAddress);
-  console.log("   LoveTokenFaucet:  ", faucetAddress);
-  console.log("   CharacterNFT:     ", characterNFTAddress);
+  console.log("   LoveToken:               ", loveTokenAddress);
+  console.log("   LoveTokenFaucet:         ", faucetAddress);
+  console.log("   CharacterNFT (Proxy):    ", characterNFTProxyAddress);
+  console.log("   CharacterNFT (Impl):     ", implementationAddress);
   console.log();
 
   console.log("========================================");
@@ -130,15 +137,24 @@ async function main() {
   console.log("========================================");
   console.log(`NEXT_PUBLIC_LOVE_TOKEN_ADDRESS=${loveTokenAddress}`);
   console.log(`NEXT_PUBLIC_FAUCET_ADDRESS=${faucetAddress}`);
-  console.log(`NEXT_PUBLIC_CHARACTER_NFT_ADDRESS=${characterNFTAddress}`);
+  console.log(`NEXT_PUBLIC_CHARACTER_NFT_ADDRESS=${characterNFTProxyAddress}`);
+  console.log();
+  console.log("⚠️  IMPORTANT: Use the PROXY address, not implementation!");
   console.log();
 
   console.log("========================================");
   console.log("🔍 VERIFICATION COMMANDS:");
   console.log("========================================");
+  console.log(`# Verify LoveToken`);
   console.log(`npx hardhat verify --network baseSepolia ${loveTokenAddress}`);
+  console.log();
+  console.log(`# Verify LoveTokenFaucet`);
   console.log(`npx hardhat verify --network baseSepolia ${faucetAddress} ${loveTokenAddress}`);
-  console.log(`npx hardhat verify --network baseSepolia ${characterNFTAddress} ${loveTokenAddress}`);
+  console.log();
+  console.log(`# Verify CharacterNFT Implementation`);
+  console.log(`npx hardhat verify --network baseSepolia ${implementationAddress}`);
+  console.log();
+  console.log("Note: Proxy verification is automatic via hardhat-upgrades");
   console.log();
 
   console.log("========================================");
@@ -162,12 +178,29 @@ async function main() {
   console.log();
 
   console.log("========================================");
+  console.log("🔄 UPGRADEABILITY INFO:");
+  console.log("========================================");
+  console.log("CharacterNFT uses UUPS (Universal Upgradeable Proxy Standard)");
+  console.log();
+  console.log("To upgrade in the future:");
+  console.log("1. Deploy new implementation contract");
+  console.log("2. Call upgradeTo(newImplementation) on proxy");
+  console.log("3. Only contract owner can upgrade");
+  console.log();
+  console.log("Benefits:");
+  console.log("- Add new features without changing NFT addresses");
+  console.log("- Preserve all character data and ownership");
+  console.log("- Lower gas costs vs Transparent Proxy");
+  console.log();
+
+  console.log("========================================");
   console.log("🎮 NEXT STEPS:");
   console.log("========================================");
-  console.log("1. Update frontend .env.local with addresses above");
-  console.log("2. Run verification commands (optional but recommended)");
-  console.log("3. Restart your frontend dev server: npm run dev");
-  console.log("4. Test the minting flow!");
+  console.log("1. Update frontend .env.local with PROXY address above");
+  console.log("2. Update frontend ABI (includes initialize, upgradeTo, etc.)");
+  console.log("3. Run verification commands (optional but recommended)");
+  console.log("4. Restart your frontend dev server: npm run dev");
+  console.log("5. Test the minting flow!");
   console.log();
 }
 

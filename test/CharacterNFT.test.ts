@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { LoveToken, CharacterNFT } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
@@ -22,14 +22,18 @@ describe("CharacterNFT", function () {
   beforeEach(async function () {
     [owner, addr1, addr2] = await ethers.getSigners();
 
-    // Deploy LoveToken
+    // Deploy LoveToken (non-upgradeable)
     const LoveTokenFactory = await ethers.getContractFactory("LoveToken");
     loveToken = await LoveTokenFactory.deploy();
     await loveToken.waitForDeployment();
 
-    // Deploy CharacterNFT
+    // Deploy CharacterNFT (UUPS upgradeable proxy)
     const CharacterNFTFactory = await ethers.getContractFactory("CharacterNFT");
-    characterNFT = await CharacterNFTFactory.deploy(await loveToken.getAddress());
+    characterNFT = await upgrades.deployProxy(
+      CharacterNFTFactory,
+      [await loveToken.getAddress()],
+      { kind: 'uups' }
+    ) as any;
     await characterNFT.waitForDeployment();
 
     // Give addr1 some tokens for testing
@@ -85,13 +89,35 @@ describe("CharacterNFT", function () {
       const character = await characterNFT.getCharacter(0);
 
       expect(character.name).to.equal("Emma");
-      expect(character.birthYear).to.be.at.least(1995).and.at.most(2007);
+
+      // Verify character is 21-25 years old at minting time
+      const currentTime = BigInt((await ethers.provider.getBlock('latest'))!.timestamp);
+      const age21Seconds = BigInt(21 * 365.25 * 24 * 60 * 60);
+      const age25Seconds = BigInt(25 * 365.25 * 24 * 60 * 60);
+      expect(character.birthTimestamp).to.be.at.least(Number(currentTime - age25Seconds));
+      expect(character.birthTimestamp).to.be.at.most(Number(currentTime - age21Seconds));
+
       expect(character.gender).to.equal(Gender.Female);
       expect(character.sexualOrientation).to.equal(SexualOrientation.Bisexual);
       expect(character.occupationId).to.be.at.least(0).and.at.most(9);
       expect(character.personalityId).to.be.at.least(0).and.at.most(9);
       expect(character.language).to.equal(0); // Language.EN
       expect(character.mintedAt).to.be.greaterThan(0);
+      expect(character.secret).to.not.equal("0x0000000000000000000000000000000000000000000000000000000000000000");
+    });
+
+    it("Should generate unique secret for each character", async function () {
+      await characterNFT.connect(addr1).mint("Emma", Gender.Female, SexualOrientation.Bisexual, Language.EN);
+      await characterNFT.connect(addr1).mint("Alex", Gender.Male, SexualOrientation.Straight, Language.EN);
+
+      const char0 = await characterNFT.getCharacter(0);
+      const char1 = await characterNFT.getCharacter(1);
+
+      // Secrets should be different for different characters
+      expect(char0.secret).to.not.equal(char1.secret);
+      // Both secrets should be non-zero
+      expect(char0.secret).to.not.equal("0x0000000000000000000000000000000000000000000000000000000000000000");
+      expect(char1.secret).to.not.equal("0x0000000000000000000000000000000000000000000000000000000000000000");
     });
 
     it("Should allow minting multiple characters", async function () {
@@ -167,7 +193,9 @@ describe("CharacterNFT", function () {
       const character = await characterNFT.getCharacter(0);
 
       expect(character.name).to.equal("Emma");
-      expect(character.birthYear).to.be.at.least(1995);
+      // Birth timestamp should be a valid past timestamp (character is 21-25 years old)
+      const currentTime = (await ethers.provider.getBlock('latest'))!.timestamp;
+      expect(character.birthTimestamp).to.be.lessThan(currentTime);
       expect(character.gender).to.equal(Gender.Female);
       expect(character.sexualOrientation).to.equal(SexualOrientation.Bisexual);
       expect(character.occupationId).to.be.at.least(0).and.at.most(9);
@@ -256,12 +284,13 @@ describe("CharacterNFT", function () {
       const charAfter = await characterNFT.getCharacter(0);
 
       expect(charAfter.name).to.equal(charBefore.name);
-      expect(charAfter.birthYear).to.equal(charBefore.birthYear);
+      expect(charAfter.birthTimestamp).to.equal(charBefore.birthTimestamp);
       expect(charAfter.gender).to.equal(charBefore.gender);
       expect(charAfter.sexualOrientation).to.equal(charBefore.sexualOrientation);
       expect(charAfter.occupationId).to.equal(charBefore.occupationId);
       expect(charAfter.personalityId).to.equal(charBefore.personalityId);
       expect(charAfter.language).to.equal(charBefore.language);
+      expect(charAfter.secret).to.equal(charBefore.secret);
     });
 
     it("Should allow multiple transfers of same NFT", async function () {
@@ -347,7 +376,7 @@ describe("CharacterNFT", function () {
 
       // At least one attribute should be different due to block.timestamp change
       const isDifferent =
-        char0.birthYear !== char1.birthYear ||
+        char0.birthTimestamp !== char1.birthTimestamp ||
         char0.occupationId !== char1.occupationId ||
         char0.personalityId !== char1.personalityId;
 
@@ -453,17 +482,81 @@ describe("CharacterNFT", function () {
 
       // All character data should remain the same
       expect(charAfter.name).to.equal(charBefore.name);
-      expect(charAfter.birthYear).to.equal(charBefore.birthYear);
+      expect(charAfter.birthTimestamp).to.equal(charBefore.birthTimestamp);
       expect(charAfter.gender).to.equal(charBefore.gender);
       expect(charAfter.sexualOrientation).to.equal(charBefore.sexualOrientation);
       expect(charAfter.occupationId).to.equal(charBefore.occupationId);
       expect(charAfter.personalityId).to.equal(charBefore.personalityId);
       expect(charAfter.language).to.equal(charBefore.language);
       expect(charAfter.mintedAt).to.equal(charBefore.mintedAt);
+      expect(charAfter.secret).to.equal(charBefore.secret);
 
       // Only isBonded should change
       expect(charAfter.isBonded).to.be.true;
       expect(charBefore.isBonded).to.be.false;
+    });
+  });
+
+  describe("Upgradeability (UUPS)", function () {
+    it("Should be upgradeable by owner", async function () {
+      // This test verifies the contract is upgradeable
+      // In practice, you'd deploy a V2 contract and upgrade to it
+      const CharacterNFTFactory = await ethers.getContractFactory("CharacterNFT");
+      const proxyAddress = await characterNFT.getAddress();
+
+      // Attempt to upgrade (to same implementation for testing)
+      await upgrades.upgradeProxy(proxyAddress, CharacterNFTFactory);
+
+      // Contract should still work after upgrade
+      expect(await characterNFT.name()).to.equal("Love Diary Character");
+    });
+
+    it("Should preserve state after upgrade", async function () {
+      // Mint a character
+      await characterNFT.connect(addr1).mint("Emma", Gender.Female, SexualOrientation.Bisexual, Language.EN);
+      await characterNFT.connect(addr1).bond(0);
+
+      const charBefore = await characterNFT.getCharacter(0);
+      const ownerBefore = await characterNFT.ownerOf(0);
+      const bondedBefore = await characterNFT.isBonded(0);
+
+      // Upgrade
+      const CharacterNFTFactory = await ethers.getContractFactory("CharacterNFT");
+      const proxyAddress = await characterNFT.getAddress();
+      await upgrades.upgradeProxy(proxyAddress, CharacterNFTFactory);
+
+      // Verify data is preserved
+      const charAfter = await characterNFT.getCharacter(0);
+      const ownerAfter = await characterNFT.ownerOf(0);
+      const bondedAfter = await characterNFT.isBonded(0);
+
+      expect(charAfter.name).to.equal(charBefore.name);
+      expect(charAfter.isBonded).to.equal(charBefore.isBonded);
+      expect(ownerAfter).to.equal(ownerBefore);
+      expect(bondedAfter).to.equal(bondedBefore);
+    });
+
+    it("Should fail upgrade from non-owner", async function () {
+      const CharacterNFTFactory = await ethers.getContractFactory("CharacterNFT");
+      const proxyAddress = await characterNFT.getAddress();
+
+      // Try to upgrade as addr1 (not owner)
+      await expect(
+        upgrades.upgradeProxy(proxyAddress, CharacterNFTFactory.connect(addr1))
+      ).to.be.reverted;
+    });
+
+    it("Should maintain correct proxy address after upgrade", async function () {
+      const proxyAddressBefore = await characterNFT.getAddress();
+
+      // Upgrade
+      const CharacterNFTFactory = await ethers.getContractFactory("CharacterNFT");
+      await upgrades.upgradeProxy(proxyAddressBefore, CharacterNFTFactory);
+
+      const proxyAddressAfter = await characterNFT.getAddress();
+
+      // Proxy address should not change
+      expect(proxyAddressAfter).to.equal(proxyAddressBefore);
     });
   });
 });

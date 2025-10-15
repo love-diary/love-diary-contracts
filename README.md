@@ -28,12 +28,13 @@ Standard ERC-20 token with fixed supply. Used for:
 Testnet faucet allowing each address to claim 10000 LOVE tokens once per hour.
 
 ### CharacterNFT.sol
-ERC-721 NFT contract for character ownership with:
+UUPS upgradeable ERC-721 NFT contract for character ownership with:
 - Player-selected attributes (name, gender, sexual orientation, language)
-- Randomized traits (birth year, occupation ID, personality ID)
+- Randomized traits (birth timestamp, occupation ID, personality ID, secret personality)
+- Bonding mechanism (one-time initialization with player)
 - Numeric trait IDs (0-9) mapped to strings off-chain for localization
-- 100 LOVE minting fee (burned)
-- 50 LOVE transfer fee (to treasury)
+- 100 LOVE minting fee (50% burned, 50% to treasury)
+- 50 LOVE transfer fee (to contract owner)
 
 ### CharacterAccess.sol
 Access control extension for multi-player support:
@@ -47,18 +48,35 @@ Gift purchase system that transfers LOVE tokens directly to character agent wall
 - Tokens go to agent wallet, not burned
 - Enables agent economic autonomy
 
+## Character Traits
+
+CharacterNFT stores occupation and personality as uint8 IDs (0-9) for gas efficiency. Frontend applications map these IDs to localized strings.
+
+### Occupation IDs (0-9)
+Artist • Engineer • Teacher • Doctor • Chef • Writer • Musician • Designer • Dancer • Photographer
+
+### Personality IDs (0-9)
+Cheerful • Shy • Confident • Caring • Adventurous • Thoughtful • Playful • Mysterious • Witty • Gentle
+
+### Rarity Distribution
+- Each trait: 10% chance (equal probability for MVP)
+- Total unique combinations: 10 × 10 = 100 possible trait pairs
+- Benefits: Gas efficient (1 byte vs 20+ bytes), verifiable on-chain, localizable off-chain
+
 ## Deployed Contracts
 
 ### Base Sepolia Testnet
 
-- **LoveToken**: `0xf614a36b715a1f00bc9450d113d4eefeb0dd6396`
-- **LoveTokenFaucet**: `0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84`
-- **CharacterNFT**: `0x55197e1d9513B4253599547804c70CfdcE68597f`
+- **LoveToken**: `0x2e19274a399F5510e185b61f78D8eDFFccc05d88`
+- **LoveTokenFaucet**: `0x14C5Aa3F8b0fE5D7792E57D6ace8bA2e0c852b31`
+- **CharacterNFT (Proxy)**: `0x93Fa2e1aB3D639F8005e94b65350FE34Cd894f08`
 
 View on Basescan:
-- [LoveToken](https://sepolia.basescan.org/address/0xf614a36b715a1f00bc9450d113d4eefeb0dd6396)
-- [LoveTokenFaucet](https://sepolia.basescan.org/address/0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84)
-- [CharacterNFT](https://sepolia.basescan.org/address/0x55197e1d9513B4253599547804c70CfdcE68597f)
+- [LoveToken](https://sepolia.basescan.org/address/0x2e19274a399F5510e185b61f78D8eDFFccc05d88)
+- [LoveTokenFaucet](https://sepolia.basescan.org/address/0x14C5Aa3F8b0fE5D7792E57D6ace8bA2e0c852b31)
+- [CharacterNFT](https://sepolia.basescan.org/address/0x93Fa2e1aB3D639F8005e94b65350FE34Cd894f08)
+
+**Note:** CharacterNFT uses UUPS proxy pattern. Always use the proxy address (above) in your frontend, not the implementation address.
 
 ### Base Mainnet (Production)
 
@@ -69,11 +87,30 @@ Not yet deployed.
 - **Solidity 0.8.x**
 - **Hardhat** - Development environment
 - **OpenZeppelin** - ERC-20 and ERC-721 implementations
+- **OpenZeppelin Upgrades** - UUPS proxy pattern for CharacterNFT
 - **Base Sepolia** - Testnet deployment (MVP)
 - **Base Mainnet** - Production deployment
 
-## Development Setup
+## Upgradeability
 
+CharacterNFT uses **UUPS (Universal Upgradeable Proxy Standard)** for upgradeability:
+
+- **Proxy address never changes** - Users' NFTs remain at the same address
+- **Only owner can upgrade** - Requires contract owner authorization
+- **All character data preserved** - No data loss during upgrades
+- **Storage layout safety** - See `STORAGE_LAYOUT.md` for detailed upgrade rules
+
+### Critical Upgrade Rules
+1. Never reorder existing state variables
+2. Never change types of existing variables
+3. Always add new variables after existing ones
+4. Always reduce storage gap when adding new variables
+
+For detailed storage layout documentation and upgrade checklist, see [`STORAGE_LAYOUT.md`](./STORAGE_LAYOUT.md).
+
+## Deployment
+
+### Setup
 ```bash
 # Install dependencies
 npm install
@@ -83,17 +120,62 @@ npx hardhat compile
 
 # Run tests
 npx hardhat test
+```
 
-# Deploy LoveToken and Faucet to Base Sepolia testnet
-npx hardhat run scripts/deploy.ts --network baseSepolia
+### Environment Variables
+Create a `.env` file:
+```env
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+PRIVATE_KEY=your_private_key_here
+BASESCAN_API_KEY=your_basescan_api_key_here
 
-# Deploy CharacterNFT to Base Sepolia testnet
-npx hardhat run scripts/deployCharacterNFT.ts --network baseSepolia
+# Only required for NFT-only deployment
+LOVE_TOKEN_ADDRESS=0x...
+```
 
-# Verify deployed contracts on Basescan
-npx hardhat verify --network baseSepolia 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
-npx hardhat verify --network baseSepolia 0xF09177Bb77d64084457cE2D7D51A4A28Bce00B84 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
-npx hardhat verify --network baseSepolia 0x55197e1d9513B4253599547804c70CfdcE68597f 0xf614a36b715a1f00bc9450d113d4eefeb0dd6396
+### Deploy All Contracts
+Deploy LoveToken, Faucet, and CharacterNFT together:
+```bash
+npm run deploy:all
+```
+
+This deploys:
+1. LoveToken (ERC-20)
+2. LoveTokenFaucet
+3. CharacterNFT (UUPS Proxy)
+4. Funds faucet with 100M LOVE tokens
+
+### Deploy CharacterNFT Only
+If LoveToken already exists, deploy only CharacterNFT:
+```bash
+# Set LOVE_TOKEN_ADDRESS in .env first
+npm run deploy:nft
+```
+
+**Important:** Use the **proxy address** (not implementation address) in your frontend.
+
+### Verify Contracts
+After deployment, verify on BaseScan:
+```bash
+# Verify LoveToken
+npx hardhat verify --network baseSepolia <LOVE_TOKEN_ADDRESS>
+
+# Verify Faucet
+npx hardhat verify --network baseSepolia <FAUCET_ADDRESS> <LOVE_TOKEN_ADDRESS>
+
+# Verify CharacterNFT Implementation
+npx hardhat verify --network baseSepolia <IMPLEMENTATION_ADDRESS>
+```
+
+Note: Proxy contracts are auto-verified by OpenZeppelin Hardhat Upgrades plugin.
+
+### Local Testing
+```bash
+# Terminal 1: Start local node
+npx hardhat node
+
+# Terminal 2: Deploy locally
+npm run deploy:all:local
 ```
 
 ## License

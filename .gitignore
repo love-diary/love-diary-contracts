@@ -53,3 +53,6 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# OpenZeppelin deployment artifacts
+.openzeppelin/

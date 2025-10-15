@@ -1,6 +1,14 @@
 {
   "name": "love-diary-contracts",
   "version": "1.0.0",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy:all": "hardhat run scripts/deploy-all.ts --network baseSepolia",
+    "deploy:nft": "hardhat run scripts/deploy-nft.ts --network baseSepolia",
+    "deploy:all:local": "hardhat run scripts/deploy-all.ts --network localhost",
+    "deploy:nft:local": "hardhat run scripts/deploy-nft.ts --network localhost"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
     "@nomicfoundation/hardhat-ethers": "^3.1.0",
@@ -9,6 +17,7 @@
     "@nomicfoundation/hardhat-network-helpers": "^1.1.0",
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@nomicfoundation/hardhat-verify": "^2.1.1",
+    "@openzeppelin/hardhat-upgrades": "^3.9.1",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.3.20",
@@ -25,6 +34,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
     "dotenv": "^17.2.3"
   }
 }
